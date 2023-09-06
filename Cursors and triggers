@@ -1,0 +1,455 @@
+USE Склад4_308
+ GO
+
+ ALTER TABLE Заказ ADD Стоимость MONEY NULL
+ ALTER TABLE Заказ ADD СтоимостьНВ MONEY NULL
+ GO
+
+ SELECT * FROM Заказ
+ GO
+
+ CREATE TRIGGER tr_Товар_Цена 
+ ON Товар
+ FOR UPDATE, INSERT AS
+   IF UPDATE(Цена) 
+     BEGIN
+             -- объявляем локальные переменные 
+       DECLARE @КодТовара INT, @Цена MONEY, @ЦенаНВ MONEY
+
+             -- присваиваем значения локальным переменным, выбирая эти
+             -- значения из таблицы inserted 
+       SELECT @КодТовара = inserted.КодТовара, 
+         @Цена = inserted.Цена, @ЦенаНВ = inserted.Цена *
+         Валюта.КурсВалюты
+       FROM inserted INNER JOIN Валюта
+         ON inserted.КодВалюты = Валюта.КодВалюты	
+
+             -- обновляем значения стоимостей в таблице Заказ 
+       UPDATE Заказ
+       SET Стоимость = Количество * @Цена,
+         СтоимостьНВ = Количество * @ЦенаНВ
+       WHERE КодТовара = @КодТовара
+     END
+ GO
+
+ CREATE TRIGGER tr_Товар_Количество 
+ ON Заказ
+ FOR UPDATE, INSERT AS
+   IF UPDATE(Количество) 
+   BEGIN
+             -- объявляем локальные переменные 
+       DECLARE @КодТовара INT, @Цена MONEY, @ЦенаНВ MONEY, @Количество numeric(12, 3)
+
+             -- присваиваем значения локальным переменным, выбирая эти
+             -- значения из таблицы inserted 
+       SELECT @КодТовара = inserted.КодТовара, @Количество = inserted.Количество,
+         @Цена = Товар.Цена, @ЦенаНВ = Товар.Цена *
+         Валюта.КурсВалюты
+       FROM inserted 
+	   INNER JOIN Товар
+         ON inserted.КодТовара = Товар.КодТовара
+		INNER JOIN Валюта ON Товар.КодВалюты = Валюта.КодВалюты
+
+             -- обновляем значения стоимостей в таблице Заказ 
+       UPDATE Заказ
+       SET Стоимость =  @Количество * @Цена,
+         СтоимостьНВ = @Количество * @ЦенаНВ
+       WHERE КодТовара = @КодТовара
+     END
+	 GO
+
+CREATE TRIGGER tr_Товар_Курс 
+ ON Валюта
+ FOR UPDATE, INSERT AS
+   IF UPDATE(КурсВалюты) 
+   BEGIN
+   DECLARE @КодТовара INT, @ЦенаНВ MONEY, @Курс smallmoney
+
+             -- присваиваем значения локальным переменным, выбирая эти
+             -- значения из таблицы inserted 
+       SELECT @КодТовара = Товар.КодТовара,  @Курс =  inserted.КурсВалюты,
+          @ЦенаНВ = Товар.Цена *@Курс
+       FROM inserted INNER JOIN Товар ON inserted.КодВалюты = Товар.КодВалюты
+
+	UPDATE Заказ
+       SET СтоимостьНВ = Количество * @ЦенаНВ
+       WHERE КодТовара = @КодТовара
+     END
+ GO
+
+
+SELECT * FROM Товар
+SELECT * FROM Заказ
+
+ UPDATE Товар
+ SET Цена = 720
+ WHERE КодТовара = 111
+
+ SELECT * FROM Товар
+ GO
+SELECT * FROM Заказ
+ GO
+
+
+SELECT * FROM Заказ
+
+ UPDATE Заказ
+ SET Количество = 320
+ WHERE КодТовара = 333
+
+SELECT * FROM Заказ
+ GO
+
+ ALTER TRIGGER tr_Set_СрокПоставки 
+ ON Заказ 
+ AFTER UPDATE, INSERT AS
+   IF UPDATE(ДатаЗаказа)
+     BEGIN
+	 DECLARE @КодТовара INT, @ДатаЗаказа DATETIME, @КодВалюты char(3)
+
+	SELECT @КодТовара = inserted.КодТовара, 
+         @ДатаЗаказа = inserted.ДатаЗаказа, @КодВалюты = Товар.КодВалюты
+       FROM inserted 
+	   INNER JOIN Товар ON inserted.КодТовара = Товар.КодТовара	
+
+	  	UPDATE Заказ
+       SET СрокПоставки = @ДатаЗаказа + 3
+       WHERE @КодВалюты = 'BYR'
+
+	   UPDATE Заказ
+       SET СрокПоставки = @ДатаЗаказа + 7
+       WHERE @КодВалюты = 'RUS'
+
+	   UPDATE Заказ
+       SET СрокПоставки = @ДатаЗаказа + 10
+       WHERE @КодВалюты = 'USD' OR @КодВалюты = 'EUR'
+
+	   UPDATE Заказ
+       SET СрокПоставки = @ДатаЗаказа + 14
+       WHERE @КодВалюты <> 'USD' AND @КодВалюты <> 'EUR' AND @КодВалюты <> 'RUS' AND @КодВалюты <> 'BYR'
+     END
+ GO
+
+ SELECT * FROM Заказ
+ UPDATE Заказ
+ SET ДатаЗаказа = '22/08/2022'
+ WHERE КодТовара = 222
+
+SELECT * FROM Заказ
+ GO
+ 
+
+ SELECT КодТовара, Наименование INTO Отпуск FROM Товар 
+ GO
+
+ ALTER TABLE Отпуск ADD ВсегоЗаказано NUMERIC(12, 3) NULL
+ GO
+
+ ALTER TRIGGER tr_Кол_ЗаказанногоТовара1
+ ON Заказ 
+ AFTER UPDATE, INSERT, DELETE AS
+   IF UPDATE(Количество)
+     BEGIN 
+	 
+	 DECLARE @КодТовара INT, @Количество INT  
+
+	 SELECT @КодТовара = inserted.КодТовара, 
+          @Количество = inserted.Количество
+       FROM inserted 
+
+		DECLARE @КолЗаписей INT
+		SET @КолЗаписей = (SELECT COUNT (*) FROM Заказ WHERE Заказ.КодТовара = @КодТовара)
+
+	   UPDATE Отпуск
+       SET ВсегоЗаказано = @Количество * @КолЗаписей
+       WHERE  КодТовара = @КодТовара
+	   END
+GO
+SELECT * FROM Заказ
+SELECT * FROM Отпуск
+ UPDATE Заказ
+ SET Количество = 350
+ WHERE КодТовара = 111
+
+SELECT * FROM Заказ
+SELECT * FROM Отпуск
+ GO
+
+ SELECT * FROM Заказ
+SELECT * FROM Отпуск
+ UPDATE Заказ
+ SET Количество = 125
+ WHERE КодТовара = 444
+
+SELECT * FROM Заказ
+SELECT * FROM Отпуск
+ GO
+ 
+ ALTER PROCEDURE pr_Стоимость_ВалютаИнтервал2 
+	@КодВалюты char(3),
+   @НачалоИнтервала DATETIME, 
+   @КонецИнтервала DATETIME,
+   @СтоимостьНВ MONEY OUTPUT
+ AS
+   IF @НачалоИнтервала IS NULL
+     SET @НачалоИнтервала = getdate() - 365
+
+   IF @КонецИнтервала IS NULL 
+     SET @КонецИнтервала = getdate()
+
+	 IF @КодВалюты IS NULL 
+     SET @КодВалюты = 'BYR'
+
+    -- выполняем начальную установку
+   SET @СтоимостьНВ = 0
+
+   -- объявляем локальную переменную @СтоимостьЗаказа
+   DECLARE @СтоимостьЗаказа MONEY
+
+      -- объявляем курсор myCursor. При этом набор данных, связанный
+      -- с курсором, будет содержать всего один столбец
+	  IF @КодВалюты = 'BYR'
+		BEGIN
+		DECLARE myCursor CURSOR LOCAL STATIC
+		FOR 
+     SELECT Заказ.Количество * Товар.Цена * Валюта.КурсВалюты
+     FROM Заказ  
+       INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+       INNER JOIN Валюта ON Товар.КодВалюты = Валюта.КодВалюты
+     WHERE Заказ.ДатаЗаказа BETWEEN @НачалоИнтервала AND
+       @КонецИнтервала
+	   END
+
+	   ELSE
+	   BEGIN
+		DECLARE myCursor CURSOR LOCAL STATIC
+		FOR 
+     SELECT Заказ.СтоимостьНВ / Валюта.КурсВалюты
+     FROM Заказ  
+       INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+       INNER JOIN Валюта ON Товар.КодВалюты = Валюта.КодВалюты
+     WHERE Заказ.ДатаЗаказа BETWEEN @НачалоИнтервала AND
+       @КонецИнтервала
+	   END
+   -- открываем курсор
+   OPEN myCursor
+
+   -- заносим в курсор значение первой строки набора данных и
+   -- считываем это значение в переменную @СтоимостьЗаказа
+   FETCH FIRST FROM myCursor INTO @СтоимостьЗаказа
+
+    -- организуем цикл, необходимый для последовательной работы с остальными строками
+    -- набора данных с целью получения суммы стоимостей заказов в национальной валюте  
+   WHILE @@FETCH_STATUS = 0
+     BEGIN
+       SET @СтоимостьНВ = @СтоимостьНВ + @СтоимостьЗаказа
+       FETCH NEXT FROM myCursor INTO @СтоимостьЗаказа
+     END
+    -- Опцию NEXT (переход к следующей строке) в команде FETCH можно 
+    -- опускать, т.к. она подразумевается по умолчанию
+
+   -- закрываем курсор
+   CLOSE myCursor
+   -- освобождаем курсор
+   DEALLOCATE myCursor
+   GO
+
+   DECLARE @Cost MONEY
+   DECLARE @BeginDate DATETIME, @EndDate DATETIME
+ SET DATEFORMAT dmy
+ SET @BeginDate = '10.04.2021'
+ SET @EndDate = '30.12.2022'
+
+ DECLARE @Code char(3)
+ SET @Code = 'USD'
+
+ EXEC pr_Стоимость_ВалютаИнтервал2 @Code, @BeginDate, @EndDate, @Cost OUTPUT
+ SELECT @Code AS [Код валюты], @BeginDate AS [Начало интервала], @EndDate AS [Конец 
+   интервала], @Cost AS [Стоимость заказов в валюте]
+ GO
+
+ CREATE TABLE ЧислоКиП (
+   Старана		varchar(20)  NOT NULL,
+   ЧислоКлиентов	INT  NULL,
+   ЧилоПоставщиков	INT  NULL,
+ )
+ GO
+
+ DECLARE	@return_value int,
+		@ЧислоКлиентов int,
+		@ЧислоПоставщиков int
+
+EXEC	@return_value = [dbo].[pr_КлиентПоставщик_СтранаИнтервал]
+		@Страна = N'Беларусь',
+		@НачалоИнтервала = N'20/09/2021',
+		@КонецИнтервала = N'30/10/2022',
+		@ЧислоКлиентов = @ЧислоКлиентов OUTPUT,
+		@ЧислоПоставщиков = @ЧислоПоставщиков OUTPUT
+
+INSERT INTO ЧислоКиП VALUES ('Беларусь', @ЧислоКлиентов, @ЧислоПоставщиков)
+GO
+
+DECLARE	@return_value int,
+		@ЧислоКлиентов int,
+		@ЧислоПоставщиков int
+
+EXEC	@return_value = [dbo].[pr_КлиентПоставщик_СтранаИнтервал]
+		@Страна = N'Россия',
+		@НачалоИнтервала = N'20/09/2021',
+		@КонецИнтервала = N'30/10/2022',
+		@ЧислоКлиентов = @ЧислоКлиентов OUTPUT,
+		@ЧислоПоставщиков = @ЧислоПоставщиков OUTPUT
+
+INSERT INTO ЧислоКиП VALUES ('Росссия', @ЧислоКлиентов, @ЧислоПоставщиков)
+GO
+
+DECLARE	@return_value int,
+		@ЧислоКлиентов int,
+		@ЧислоПоставщиков int
+
+EXEC	@return_value = [dbo].[pr_КлиентПоставщик_СтранаИнтервал]
+		@Страна = N'Украина',
+		@НачалоИнтервала = N'20/09/2021',
+		@КонецИнтервала = N'30/10/2022',
+		@ЧислоКлиентов = @ЧислоКлиентов OUTPUT,
+		@ЧислоПоставщиков = @ЧислоПоставщиков OUTPUT
+
+INSERT INTO ЧислоКиП VALUES ('Украина', @ЧислоКлиентов, @ЧислоПоставщиков)
+GO
+
+DECLARE	@return_value int,
+		@ЧислоКлиентов int,
+		@ЧислоПоставщиков int
+
+EXEC	@return_value = [dbo].[pr_КлиентПоставщик_СтранаИнтервал]
+		@Страна = N'Литва',
+		@НачалоИнтервала = N'20/09/2021',
+		@КонецИнтервала = N'30/10/2022',
+		@ЧислоКлиентов = @ЧислоКлиентов OUTPUT,
+		@ЧислоПоставщиков = @ЧислоПоставщиков OUTPUT
+
+INSERT INTO ЧислоКиП VALUES ('Литва', @ЧислоКлиентов, @ЧислоПоставщиков)
+GO
+
+select * from ЧислоКиП
+go
+
+CREATE TABLE Протокол (
+   Номер INT IDENTITY(1,1) PRIMARY KEY ,
+   Дата	 DATETIME  NULL,
+   Пользователь	varchar(30)  NULL,
+   Действие varchar(10) NULL,
+   ЧислоСтрок int NULL,
+   КодТовара int NULL
+ )
+ GO
+
+ CREATE TRIGGER tr_Товар_Протокол_update
+ ON Товар
+ FOR UPDATE AS
+ BEGIN
+             -- объявляем локальные переменные 
+       DECLARE @Дата DATETIME, @Пользователь varchar(30), @Действие varchar(10), @ЧислоСтрок int, @КодТовара INT
+
+             -- присваиваем значения локальным переменным, выбирая эти
+             -- значения из таблицы inserted 
+       SELECT @ЧислоСтрок = COUNT (*) FROM inserted
+
+	   SET @Дата = GETUTCDATE()
+
+	   set @Действие = 'Обновление'
+
+	   set @Пользователь = SUSER_SNAME()
+
+	   DECLARE myCursor CURSOR LOCAL STATIC
+       FOR
+	   SELECT inserted.КодТовара FROM inserted
+
+
+
+             -- обновляем значения стоимостей в таблице Заказ 
+			 OPEN myCursor
+	   FETCH FIRST FROM myCursor INTO @КодТовара
+
+
+             -- обновляем значения стоимостей в таблице Заказ 
+			 WHILE @@FETCH_STATUS = 0
+         BEGIN
+       insert into Протокол values (@Дата, @Пользователь, @Действие, @ЧислоСтрок, @КодТовара)
+	   FETCH NEXT FROM myCursor INTO @КодТовара
+     END
+	 CLOSE myCursor
+             -- освобождаем курсор
+       DEALLOCATE myCursor
+	END
+GO
+
+CREATE TRIGGER tr_Товар_Протокол_insert
+ ON Товар
+ FOR INSERT AS
+ BEGIN
+             -- объявляем локальные переменные 
+       DECLARE @Дата DATETIME, @Пользователь varchar(30), @Действие varchar(10), @ЧислоСтрок int
+
+             -- присваиваем значения локальным переменным, выбирая эти
+             -- значения из таблицы inserted 
+       SELECT @ЧислоСтрок = COUNT (*) FROM inserted
+
+	   SET @Дата = GETUTCDATE()
+
+	   set @Действие = 'Добавление'
+
+	   set @Пользователь = SUSER_SNAME()
+
+	   DECLARE @КодТовара INT
+	   SELECT @КодТовара = inserted.КодТовара
+       FROM inserted
+
+             -- обновляем значения стоимостей в таблице Заказ 
+       insert into Протокол values (@Дата, @Пользователь, @Действие, @ЧислоСтрок, @КодТовара)
+     END
+GO
+
+CREATE TRIGGER tr_Товар_Протокол_delete
+ ON Товар
+ FOR INSERT AS
+ BEGIN
+             -- объявляем локальные переменные 
+       DECLARE @Дата DATETIME, @Пользователь varchar(30), @Действие varchar(10), @ЧислоСтрок int, @КодТовара INT
+
+             -- присваиваем значения локальным переменным, выбирая эти
+             -- значения из таблицы inserted  
+       SELECT @ЧислоСтрок = COUNT (*) FROM deleted
+
+	   SET @Дата = GETUTCDATE()
+
+	   set @Действие = 'Удаление'
+
+	   set @Пользователь = SUSER_SNAME()
+	   DECLARE myCursor CURSOR LOCAL STATIC
+       FOR
+	   SELECT deleted.КодТовара FROM deleted
+
+	   OPEN myCursor
+	   FETCH FIRST FROM myCursor INTO @КодТовара
+
+
+             -- обновляем значения стоимостей в таблице Заказ 
+			 WHILE @@FETCH_STATUS = 0
+         BEGIN
+       insert into Протокол values (@Дата, @Пользователь, @Действие, @ЧислоСтрок, @КодТовара)
+	   FETCH NEXT FROM myCursor INTO @КодТовара
+     END
+	 CLOSE myCursor
+             -- освобождаем курсор
+       DEALLOCATE myCursor
+	END
+	GO
+
+UPDATE Товар
+ SET Цена = 860, Расфасован = 'Нет'
+ WHERE КодТовара = 333
+ GO
+
+ Select * from Протокол
+ GO
