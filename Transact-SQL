@@ -1,0 +1,327 @@
+USE Склад4_308
+ GO
+
+ CREATE PROCEDURE pr_КолебанияСпросаТоваров
+@Интервал INT = 0,
+@ТипРезультата INT = 1,
+@Имя VARCHAR (40) = NULL OUTPUT ,
+@Итог NUMERIC (12, 3) = 0 OUTPUT,
+@КодТовара INT = 0
+AS
+ 
+IF @ТипРезультата = 1
+SELECT @Итог = SUM (Количество), @КодТовара = КодТовара
+FROM Заказ
+WHERE ДатаЗаказа BETWEEN GetDate() - @Интервал AND GetDate()
+GROUP BY КодТовара
+ORDER BY SUM(Количество)
+ 
+ELSE IF @ТипРезультата = 2
+SELECT @Итог = SUM (Количество), @КодТовара = КодТовара
+FROM Заказ
+WHERE ДатаЗаказа BETWEEN GetDate() - @Интервал AND GetDate()
+GROUP BY КодТовара
+ORDER BY SUM(Количество) DESC
+ 
+SELECT @Имя = Наименование   
+FROM Товар
+WHERE КодТовара = @КодТовара
+GO	
+
+DECLARE	@return_value int,
+		@Имя varchar(40),
+		@Итог numeric(12, 3)
+
+EXEC	@return_value = [dbo].[pr_КолебанияСпросаТоваров]
+		@Интервал = 30,
+		@ТипРезультата = 1,
+		@Имя = @Имя OUTPUT,
+		@Итог = @Итог OUTPUT,
+		@КодТовара = 203
+
+SELECT	@Имя as N'@Имя',
+		@Итог as N'@Итог'
+
+GO
+
+ CREATE PROCEDURE pr_КлиентПоставщик_СтранаИнтервал
+ @Страна nvarchar(20) = 'Беларусь',
+ @НачалоИнтервала datetime = '20/09/2021',
+ @КонецИнтервала datetime = '29/10/2022',
+ @ЧислоКлиентов INT = 0 OUTPUT,
+ @ЧислоПоставщиков INT = 0 OUTPUT,
+ @КодРегиона INT = 203
+AS
+ IF @Страна IS NOT NULL
+     BEGIN
+		SELECT @ЧислоПоставщиков = COUNT (Заказ.КодПоставщика), @КодРегиона = КодРегиона
+		FROM Заказ
+			INNER JOIN Поставщик ON Заказ.КодПоставщика = Поставщик.КодПоставщика
+		WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала AND Поставщик.КодРегиона = @КодРегиона
+		GROUP BY Поставщик.КодРегиона
+	END
+	BEGIN
+		SELECT @ЧислоКлиентов  = COUNT (Заказ.КодКлиента), @КодРегиона = КодРегиона
+		FROM Заказ
+			INNER JOIN Клиент ON Заказ.КодКлиента = Клиент.КодКлиента
+		WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала AND Клиент.КодРегиона = @КодРегиона
+		GROUP BY Клиент.КодРегиона
+	END
+ IF @Страна IS NULL
+	BEGIN
+		SELECT @ЧислоПоставщиков = COUNT (Заказ.КодПоставщика)
+		FROM Заказ
+		WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала 
+	END
+	BEGIN
+		SELECT @ЧислоКлиентов  = COUNT (Заказ.КодКлиента)
+		FROM Заказ
+		WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала 
+	END
+GO	
+
+DECLARE	@return_value int,
+		@ЧислоКлиентов int,
+		@ЧислоПоставщиков int
+
+EXEC	@return_value = [dbo].[pr_КлиентПоставщик_СтранаИнтервал]
+		@Страна = N'Беларусь ',
+		@НачалоИнтервала = N'20/09/2021',
+		@КонецИнтервала = N'30/10/2022',
+		@ЧислоКлиентов = @ЧислоКлиентов OUTPUT,
+		@ЧислоПоставщиков = @ЧислоПоставщиков OUTPUT
+
+SELECT	@ЧислоКлиентов as N'@ЧислоКлиентов',
+		@ЧислоПоставщиков as N'@ЧислоПоставщиков'
+
+GO
+
+ CREATE PROCEDURE pr_Товар_СтранаВалютаИнтервал
+ @Страна nvarchar(20) = 'Беларусь',
+ @НачалоИнтервала datetime = '20/09/2021',
+ @КонецИнтервала datetime = '29/10/2022',
+ @Валюта varchar(3) = 'BYR',
+ @ЧислоТоваров INT = 0 OUTPUT,
+ @КодВалюты char(3) = 'BYR',
+ @КодРегиона INT = 203
+AS
+	IF @Страна IS NOT NULL
+		Begin
+			If @Валюта IS NOT NULL
+				SELECT @ЧислоТоваров  = SUM (Заказ.Количество), @КодРегиона = КодРегиона, @КодВалюты = КодВалюты
+				FROM Заказ
+				INNER JOIN Клиент ON Заказ.КодКлиента = Клиент.КодКлиента
+				INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+				WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала AND Клиент.КодРегиона = @КодРегиона AND Товар.КодВалюты = @КодВалюты
+				GROUP BY Клиент.КодРегиона, Товар.КодВалюты
+			else 
+				SELECT @ЧислоТоваров  = SUM (Заказ.Количество), @КодРегиона = КодРегиона
+				FROM Заказ
+				INNER JOIN Клиент ON Заказ.КодКлиента = Клиент.КодКлиента
+				INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+				WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала AND Клиент.КодРегиона = @КодРегиона AND Товар.КодВалюты = 'BYR'
+				GROUP BY Клиент.КодРегиона, Товар.КодВалюты
+		End
+	Else 
+		Begin
+			If @Валюта IS NOT NULL
+				SELECT @ЧислоТоваров  = SUM (Заказ.Количество), @КодВалюты = КодВалюты
+				FROM Заказ
+				INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+				WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала AND Товар.КодВалюты = @КодВалюты
+				GROUP BY Товар.КодВалюты
+			else 
+				SELECT @ЧислоТоваров  = SUM (Заказ.Количество)
+				FROM Заказ
+				INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+				WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала AND Товар.КодВалюты = 'BYR'
+				GROUP BY Товар.КодВалюты
+		End
+GO
+
+DECLARE	@return_value int,
+		@ЧислоТоваров int
+
+EXEC	@return_value = [dbo].[pr_Товар_СтранаВалютаИнтервал]
+		@Страна = N'Беларусь',
+		@НачалоИнтервала = N'20/09/2020',
+		@КонецИнтервала = N'31/10/2022',
+		@Валюта = N'BYR',
+		@ЧислоТоваров = @ЧислоТоваров OUTPUT
+
+SELECT	@ЧислоТоваров as N'@ЧислоТоваров'
+GO
+ 
+ CREATE FUNCTION fn_getЧислоДней_вМесяце
+   (@Дата datetime)
+ RETURNS int
+ BEGIN
+   DECLARE @ЧислоДней int   --объявляем локальную переменную @Курс
+
+   IF MONTH(@Дата) = 1 OR MONTH(@Дата) = 3 OR MONTH(@Дата) = 5 OR MONTH(@Дата) = 7 OR MONTH(@Дата) = 8 OR MONTH(@Дата) = 10 OR MONTH(@Дата) = 12
+	SET @ЧислоДней = 31
+
+	ELSE 
+	SET @ЧислоДней = 30
+   
+   RETURN @ЧислоДней   --функция возвращает значение переменной @Курс
+ END
+ GO
+
+ DECLARE @Дата datetime
+ SET @Дата = '20.10.2021'
+ SELECT @Дата AS [Дата], dbo.fn_getЧислоДней_вМесяце(@Дата)
+   AS [Число дней]
+ GO
+
+CREATE FUNCTION fn_getФИО_вФормате
+   (@ФИО nvarchar(30), @Формат INT)
+ RETURNS nvarchar(30)
+ BEGIN
+   DECLARE @ФИОфомат nvarchar(30)   --объявляем локальную переменную @Курс
+
+   IF @Формат = 1
+	SET @ФИОфомат = UPPER (@ФИО)
+
+	IF @Формат = 2
+	SET @ФИОфомат = LOWER (@ФИО)
+
+	IF @Формат = 3
+	SET @ФИОфомат = UPPER(SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 3), 1, 1))+SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 3), 2, 100)+' '+
+     UPPER(SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 2), 1, 1))+SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 2), 2, 100)+' '+
+     UPPER(SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 1), 1, 1))+SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 1), 2, 100);
+
+	 IF @Формат = 4
+	SET @ФИОфомат = UPPER(SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 3), 1, 1))+SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 3), 2, 100)+' '+
+     UPPER(SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 2), 1, 1)) +'.'+ ' '+
+     UPPER(SUBSTRING(parsename(REPLACE(@ФИО, ' ', '.'), 1), 1, 1)) +'.'
+   
+   RETURN @ФИОфомат   --функция возвращает значение переменной @Курс
+ END
+ GO
+
+ DECLARE @ФИО nvarchar(30), @Формат INT
+ SET @ФИО = 'петров иван сергеевич'
+ SET @Формат = 4
+ SELECT @ФИО AS [ФИО], dbo.fn_getФИО_вФормате(@ФИО, @Формат)
+   AS [Результат]
+ GO
+
+ CREATE FUNCTION fn_ВыборЗаказовПоВалюте
+   (@Код CHAR(3))
+ RETURNS TABLE 
+ AS RETURN 
+   SELECT Заказ.*, Товар.КодВалюты 
+   FROM Заказ INNER JOIN Товар 
+     ON Заказ.КодТовара = Товар.КодТовара
+   WHERE Товар.КодВалюты = @Код
+ GO
+  /* Проверка работы функции func_ВыборЗаказовПоВалюте */
+ SELECT * FROM fn_ВыборЗаказовПоВалюте('USD') 
+ GO
+
+ CREATE FUNCTION fn_getGroup_НаименованиеВалюта
+   (@НачалоИнтервала datetime,
+	@КонецИнтервала datetime)
+ RETURNS TABLE 
+ AS RETURN 
+   SELECT Товар.Наименование, Валюта.ИмяВалюты, Заказ.Количество, Товар.Цена * Заказ.Количество AS [Стоимость в валюте], Товар.Цена * Заказ.Количество * Валюта.КурсВалюты AS [Стоимость в национальной валюте]
+   FROM Заказ 
+   INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+   INNER JOIN Валюта ON Товар.КодВалюты = Валюта.КодВалюты
+   WHERE ДатаЗаказа BETWEEN @НачалоИнтервала AND @КонецИнтервала
+ GO
+  /* Проверка работы функции func_ВыборЗаказовПоВалюте */
+ SELECT * FROM fn_getGroup_НаименованиеВалюта('20/09/2021', '30/10/2022') 
+ GO
+
+ CREATE FUNCTION fn_ВыборРегионовСтраны
+   (@Страна VARCHAR(20))
+ RETURNS @CountryRegions TABLE (
+   КодРегиона INT PRIMARY KEY,
+   Страна   VARCHAR(20) NOT NULL,
+   Город	   VARCHAR(20) NULL,
+   ОбластнойЦентр BIT NULL)
+ BEGIN 
+   -- Объявляем локальную переменную @rowset типа таблица
+   DECLARE @rowset TABLE (
+     КодРегиона INT PRIMARY KEY,
+     Страна   VARCHAR(20) NOT NULL,
+     Область  VARCHAR(20) NULL,
+     Город    VARCHAR(20) NULL,
+     ОбластнойЦентр BIT DEFAULT 0 NULL)
+
+   -- Заносим данные в локальную переменную @rowset
+   INSERT @rowset (КодРегиона, Страна, Область, Город)
+     SELECT КодРегиона, Страна, Область, Город
+     FROM Регион 
+     WHERE Страна = @Страна
+
+   -- Заносим данные в столбец "ОбластнойЦентр" переменной @rowset
+   UPDATE @rowset
+   SET ОбластнойЦентр = 1
+   WHERE Область = ''
+ 
+   -- Заносим данные в результирующую переменную @CountryRegion типа таблица, т.к.
+   -- локальная переменная @rowset после  выхода из функции автоматически уничтожается
+   INSERT @CountryRegions
+     SELECT КодРегиона, Страна, Город, ОбластнойЦентр 
+     FROM @rowset
+
+   RETURN
+ END
+ GO
+  /* Проверка работы функции fn_ВыборРегионовСтраны */
+ SELECT * FROM fn_ВыборРегионовСтраны('Беларусь') 
+ SELECT * FROM fn_ВыборРегионовСтраны('Россия') 
+ GO
+
+ CREATE FUNCTION fn_getTable_СтоимостьНВ 
+ ()
+ RETURNS @Res TABLE (
+	ДатаЗаказа datetime NULL,
+	ИмяКлиента VARCHAR(30) NOT NULL,
+	НаименованиеТовара VARCHAR(20) NOT NULL,
+	Количество NUMERIC(12, 3)  NULL  CHECK (Количество > 0),
+	ЦенаВнв MONEY  NULL  CHECK (ЦенаВнв > 0),
+	СтоимостьВнв MONEY  NULL)
+ BEGIN 
+   -- Объявляем локальную переменную @rowset типа таблица
+   DECLARE @rowset1 TABLE (
+	ДатаЗаказа datetime NULL,
+	ИмяКлиента VARCHAR(30) NOT NULL,
+	НаименованиеТовара VARCHAR(20) NOT NULL,
+	Количество NUMERIC(12, 3)  NULL  CHECK (Количество > 0),
+	Цена MONEY  NULL,
+	КурсВалюты smallmoney NULL,
+	ЦенаВнв MONEY  NULL  CHECK (ЦенаВнв > 0),
+	СтоимостьВнв MONEY  NULL)
+
+   -- Заносим данные в локальную переменную @rowset
+   INSERT @rowset1 (ДатаЗаказа, ИмяКлиента, НаименованиеТовара, Количество, Цена, КурсВалюты)
+     SELECT ДатаЗаказа, ИмяКлиента, Наименование AS [НаименованиеТовара], Количество, Цена, КурсВалюты
+     FROM Заказ 
+	 INNER JOIN Товар ON Заказ.КодТовара = Товар.КодТовара
+	 INNER JOIN Клиент ON Заказ.КодКлиента = Клиент.КодКлиента
+	 INNER JOIN Валюта ON Товар.КодВалюты = Валюта.КодВалюты
+
+
+   UPDATE @rowset1
+   SET ЦенаВнв = Цена * КурсВалюты
+
+   UPDATE @rowset1
+   SET СтоимостьВнв = Цена * КурсВалюты * Количество
+
+   DELETE FROM @rowset1
+   where СтоимостьВнв in (select СтоимостьВнв from @rowset1 group by СтоимостьВнв having СтоимостьВнв < AVG (СтоимостьВнв))
+   
+   INSERT @Res
+     SELECT ДатаЗаказа, ИмяКлиента, НаименованиеТовара, Количество, ЦенаВнв, СтоимостьВнв
+     FROM @rowset1
+
+   RETURN
+ END
+ GO
+
+ SELECT * FROM fn_getTable_СтоимостьНВ() 
+ GO
